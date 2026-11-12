@@ -1,0 +1,7 @@
+{
+  "name": "CronosMedia - Agendamento Multimídia",
+  "description": "Aplicativo profissional de agendamento de compromissos com anexo de fotos e vídeos, integrado com Supabase, GitHub e Vercel.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
