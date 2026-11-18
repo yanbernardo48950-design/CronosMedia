@@ -1,20 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Calendar,
   Clock,
-  MapPin,
-  User,
-  Mail,
-  Tag,
-  AlignLeft,
+  ChevronDown,
+  ChevronUp,
   Trash2,
   Database,
   GitBranch,
   Check,
+  BookOpen,
+  User,
 } from 'lucide-react';
-import { Appointment, AppointmentCategory, AppointmentStatus, MediaAttachment } from '../types';
+import {
+  Appointment,
+  AppointmentCategory,
+  AppointmentStatus,
+  MediaAttachment,
+  SchoolShift,
+} from '../types';
 import { MediaUploadDropzone } from './MediaUploadDropzone';
+import {
+  LESSON_CATEGORIES,
+  VESPERTINO_CLASSES,
+  MATUTINO_CLASSES,
+  getShiftForClass,
+  getCategoryLabel,
+} from '../constants/school';
 
 interface AppointmentModalProps {
   appointment: Partial<Appointment> | null;
@@ -24,16 +36,6 @@ interface AppointmentModalProps {
   onDelete?: (id: string) => void;
   onPreviewMedia?: (mediaList: MediaAttachment[], index: number) => void;
 }
-
-const CATEGORIES: { value: AppointmentCategory; label: string }[] = [
-  { value: 'reuniao', label: 'Reunião' },
-  { value: 'producao', label: 'Produção Audiovisual' },
-  { value: 'vistoria', label: 'Vistoria Técnica' },
-  { value: 'gravacao', label: 'Gravação / Filmagem' },
-  { value: 'ensaio', label: 'Ensaio Fotográfico' },
-  { value: 'cliente', label: 'Atendimento a Cliente' },
-  { value: 'outro', label: 'Outro' },
-];
 
 const STATUSES: { value: AppointmentStatus; label: string }[] = [
   { value: 'agendado', label: 'Agendado' },
@@ -50,51 +52,98 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
   onDelete,
   onPreviewMedia,
 }) => {
-  if (!isOpen) return null;
+  const [title, setTitle] = useState('');
+  const [subject, setSubject] = useState('');
+  const [teacherName, setTeacherName] = useState('');
+  const [shift, setShift] = useState<SchoolShift>('vespertino');
+  const [schoolClass, setSchoolClass] = useState('62.01');
+  const [category, setCategory] = useState<AppointmentCategory>('1_aula');
+  const [description, setDescription] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startTime, setStartTime] = useState('07:30');
+  const [endTime, setEndTime] = useState('');
+  const [status, setStatus] = useState<AppointmentStatus>('agendado');
+  const [location, setLocation] = useState('');
+  const [media, setMedia] = useState<MediaAttachment[]>([]);
 
-  const isEditing = Boolean(appointment?.id);
-
-  const [title, setTitle] = useState(appointment?.title || '');
-  const [description, setDescription] = useState(appointment?.description || '');
-  const [date, setDate] = useState(appointment?.date || new Date().toISOString().split('T')[0]);
-  const [startTime, setStartTime] = useState(appointment?.startTime || '10:00');
-  const [endTime, setEndTime] = useState(appointment?.endTime || '11:00');
-  const [category, setCategory] = useState<AppointmentCategory>(
-    appointment?.category || 'producao'
-  );
-  const [status, setStatus] = useState<AppointmentStatus>(appointment?.status || 'agendado');
-  const [location, setLocation] = useState(appointment?.location || '');
-  const [clientName, setClientName] = useState(appointment?.clientName || '');
-  const [clientEmail, setClientEmail] = useState(appointment?.clientEmail || '');
-  const [media, setMedia] = useState<MediaAttachment[]>(appointment?.media || []);
-
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [syncToSupabase, setSyncToSupabase] = useState(true);
   const [exportToGitHub, setExportToGitHub] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  useEffect(() => {
+    if (isOpen) {
+      const initialClass = appointment?.schoolClass || '62.01';
+      const detectedShift =
+        appointment?.shift || getShiftForClass(initialClass) || 'vespertino';
+
+      setTitle(appointment?.title || '');
+      setSubject(appointment?.subject || '');
+      setTeacherName(appointment?.teacherName || '');
+      setShift(detectedShift);
+      setSchoolClass(initialClass);
+      setCategory(appointment?.category || '1_aula');
+      setDescription(appointment?.description || '');
+      setDate(appointment?.date || new Date().toISOString().split('T')[0]);
+      setStartTime(appointment?.startTime || '13:30');
+      setEndTime(appointment?.endTime || '');
+      setStatus(appointment?.status || 'agendado');
+      setLocation(appointment?.location || '');
+      setMedia(appointment?.media || []);
+      setShowMoreOptions(false);
+      setExportToGitHub(false);
+      setErrorMsg('');
+    }
+  }, [appointment, isOpen]);
+
+  if (!isOpen) return null;
+
+  const isEditing = Boolean(appointment?.id);
+  const availableClasses = shift === 'vespertino' ? VESPERTINO_CLASSES : MATUTINO_CLASSES;
+
+  const handleShiftChange = (newShift: SchoolShift) => {
+    setShift(newShift);
+    const list = newShift === 'vespertino' ? VESPERTINO_CLASSES : MATUTINO_CLASSES;
+    if (!list.includes(schoolClass)) {
+      setSchoolClass(list[0]);
+    }
+    if (!isEditing) {
+      setStartTime(newShift === 'vespertino' ? '13:30' : '07:30');
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) {
-      setErrorMsg('Informe o título do compromisso.');
+    const cleanSubject = subject.trim();
+    const cleanTitle = title.trim();
+
+    if (!cleanSubject && !cleanTitle) {
+      setErrorMsg('Informe a matéria ou um título para o agendamento.');
       return;
     }
     if (!date) {
-      setErrorMsg('Selecione uma data para o compromisso.');
+      setErrorMsg('Selecione uma data.');
       return;
     }
 
+    const finalTitle =
+      cleanTitle ||
+      `${cleanSubject}${schoolClass ? ` · Turma ${schoolClass}` : ''}`;
+
     const payload: Appointment = {
       id: appointment?.id || `apt-${Date.now()}`,
-      title: title.trim(),
+      title: finalTitle,
       description: description.trim(),
       date,
       startTime,
-      endTime,
+      endTime: endTime.trim() || undefined,
       category,
+      subject: cleanSubject || undefined,
+      teacherName: teacherName.trim() || undefined,
+      schoolClass: schoolClass || undefined,
+      shift,
       status,
       location: location.trim(),
-      clientName: clientName.trim() || undefined,
-      clientEmail: clientEmail.trim() || undefined,
       media,
       githubSync: appointment?.githubSync,
       supabaseSynced: appointment?.supabaseSynced || false,
@@ -112,91 +161,141 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto"
     >
-      <div className="relative w-full max-w-2xl my-8 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-neutral-900 dark:text-neutral-100">
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/70 dark:bg-neutral-950/50">
-          <div>
-            <h2 className="text-base font-semibold">
-              {isEditing ? 'Editar Registro de Compromisso' : 'Novo Agendamento Multimídia'}
-            </h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-              Anexe fotos, vídeos de campo e sincronize com a nuvem.
-            </p>
-          </div>
+      <div className="relative w-full max-w-xl my-6 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-neutral-900 dark:text-neutral-100">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800">
+          <h2 className="text-base font-semibold">
+            {isEditing ? 'Editar Aula / Agendamento' : 'Novo Agendamento de Aula'}
+          </h2>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-200/50 dark:hover:bg-neutral-800 transition-colors"
+            aria-label="Fechar"
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto max-h-[80vh]">
           {errorMsg && (
             <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-lg text-xs">
               {errorMsg}
             </div>
           )}
 
-          {/* Title */}
+          {/* 1. Categoria: 1ª até 5ª Aula */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-              Título do Compromisso *
+            <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+              Aula (1ª até 5ª)
             </label>
-            <input
-              type="text"
-              required
-              placeholder="Ex: Ensaio de Moda, Vistoria Estrutural, Gravação de Comercial..."
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3.5 py-2 text-sm rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-            />
-          </div>
-
-          {/* Category & Status */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                <Tag className="w-3.5 h-3.5" />
-                Categoria
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as AppointmentCategory)}
-                className="w-full px-3 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500 transition-colors"
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                Status
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as AppointmentStatus)}
-                className="w-full px-3 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500 transition-colors"
-              >
-                {STATUSES.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-5 gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
+              {LESSON_CATEGORIES.map((lesson) => (
+                <button
+                  key={lesson.value}
+                  type="button"
+                  onClick={() => setCategory(lesson.value)}
+                  className={`py-1.5 px-2 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                    category === lesson.value
+                      ? 'bg-indigo-600 text-white shadow-xs font-semibold'
+                      : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white'
+                  }`}
+                >
+                  {lesson.shortLabel}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Date and Times */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* 2. Turno e Turmas */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                Turma ({shift === 'vespertino' ? 'Vespertino' : 'Matutino'})
+              </label>
+
+              <div className="flex items-center p-0.5 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => handleShiftChange('vespertino')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                    shift === 'vespertino'
+                      ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-xs'
+                      : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200'
+                  }`}
+                >
+                  Vespertino
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleShiftChange('matutino')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                    shift === 'matutino'
+                      ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-xs'
+                      : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200'
+                  }`}
+                >
+                  Matutino
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {availableClasses.map((cls) => (
+                <button
+                  key={cls}
+                  type="button"
+                  onClick={() => setSchoolClass(cls)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium border transition-colors ${
+                    schoolClass === cls
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                      : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:border-indigo-400'
+                  }`}
+                >
+                  {cls}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Matéria e Nome do Professor */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                <Calendar className="w-3.5 h-3.5" />
+              <label className="flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+                <BookOpen className="w-3.5 h-3.5 text-neutral-400" />
+                Matéria *
+              </label>
+              <input
+                type="text"
+                autoFocus
+                placeholder="Ex: Matemática, Física, Artes..."
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+              />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+                <User className="w-3.5 h-3.5 text-neutral-400" />
+                Professor(a)
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: Prof. Carlos Silva"
+                value={teacherName}
+                onChange={(e) => setTeacherName(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* 4. Data e Horário */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+                <Calendar className="w-3.5 h-3.5 text-neutral-400" />
                 Data *
               </label>
               <input
@@ -209,9 +308,9 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
             </div>
 
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                <Clock className="w-3.5 h-3.5" />
-                Início
+              <label className="flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+                <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                Horário
               </label>
               <input
                 type="time"
@@ -220,90 +319,19 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
                 className="w-full px-3 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500 font-mono"
               />
             </div>
-
-            <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                <Clock className="w-3.5 h-3.5" />
-                Término
-              </label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500 font-mono"
-              />
-            </div>
           </div>
 
-          {/* Location */}
+          {/* 5. Fotos e Vídeos */}
           <div>
-            <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-              <MapPin className="w-3.5 h-3.5" />
-              Localização / Estúdio / Link
-            </label>
-            <input
-              type="text"
-              placeholder="Ex: Estúdio B, Obra Alphaville Lote 14 ou Link do Google Meet"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500"
-            />
-          </div>
-
-          {/* Client Info */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                <User className="w-3.5 h-3.5" />
-                Cliente / Responsável
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: Dra. Mariana Costa, Arq. Lucas"
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                <Mail className="w-3.5 h-3.5" />
-                E-mail de Contato
-              </label>
-              <input
-                type="email"
-                placeholder="contato@cliente.com"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500 font-mono"
-              />
-            </div>
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-              <AlignLeft className="w-3.5 h-3.5" />
-              Pauta & Observações Técnicas
-            </label>
-            <textarea
-              rows={3}
-              placeholder="Instruções de equipamentos, lista de tomadas de vídeo, ângulos fotográficos ou itens para checagem in loco..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500 resize-y"
-            />
-          </div>
-
-          {/* Section: Multimedia Attachments */}
-          <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
-                Anexos Multimídia (Fotos e Vídeos)
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                Fotos e Vídeos
               </span>
-              <span className="text-xs text-neutral-500 font-mono">
-                {media.length} arquivo(s)
-              </span>
+              {media.length > 0 && (
+                <span className="text-xs text-neutral-500 font-mono">
+                  {media.length} anexo{media.length > 1 ? 's' : ''}
+                </span>
+              )}
             </div>
             <MediaUploadDropzone
               media={media}
@@ -312,42 +340,134 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
             />
           </div>
 
-          {/* Sync Toggles */}
-          <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-800 space-y-2 text-xs">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={syncToSupabase}
-                onChange={(e) => setSyncToSupabase(e.target.checked)}
-                className="rounded text-indigo-600 focus:ring-indigo-500"
-              />
-              <span className="flex items-center gap-1.5 text-neutral-700 dark:text-neutral-300">
-                <Database className="w-3.5 h-3.5 text-emerald-500" />
-                Sincronizar no Supabase (PostgreSQL & Storage)
-              </span>
+          {/* 6. Notas */}
+          <div>
+            <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+              Notas / Conteúdo (opcional)
             </label>
+            <textarea
+              rows={2}
+              placeholder="Atividade prática, registro de aula, observações..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-indigo-500 resize-y"
+            />
+          </div>
 
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={exportToGitHub}
-                onChange={(e) => setExportToGitHub(e.target.checked)}
-                className="rounded text-indigo-600 focus:ring-indigo-500"
-              />
-              <span className="flex items-center gap-1.5 text-neutral-700 dark:text-neutral-300">
-                <GitBranch className="w-3.5 h-3.5 text-neutral-400" />
-                Exportar registro como Issue no repositório GitHub
-              </span>
-            </label>
+          {/* 7. Mais opções (recolhível) */}
+          <div className="border-t border-neutral-200 dark:border-neutral-800 pt-2.5">
+            <button
+              type="button"
+              onClick={() => setShowMoreOptions(!showMoreOptions)}
+              className="flex items-center justify-between w-full text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 py-1 transition-colors"
+            >
+              <span>Mais opções (título personalizado, sala, término, GitHub)</span>
+              {showMoreOptions ? (
+                <ChevronUp className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+            </button>
+
+            {showMoreOptions && (
+              <div className="mt-3 space-y-3 pt-3 border-t border-neutral-100 dark:border-neutral-800/70">
+                <div>
+                  <label className="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                    Título personalizado (se vazio, usa Matéria + Turma)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={
+                      subject
+                        ? `${subject} · Turma ${schoolClass}`
+                        : `${getCategoryLabel(category)} · Turma ${schoolClass}`
+                    }
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                      Término
+                    </label>
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                      Sala / Local
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Lab. Informática, Sala 04"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                      Status
+                    </label>
+                    <select
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value as AppointmentStatus)}
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700"
+                    >
+                      {STATUSES.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-800 space-y-2 text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={syncToSupabase}
+                      onChange={(e) => setSyncToSupabase(e.target.checked)}
+                      className="rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="flex items-center gap-1.5 text-neutral-700 dark:text-neutral-300">
+                      <Database className="w-3.5 h-3.5 text-emerald-500" />
+                      Sincronizar com Supabase
+                    </span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={exportToGitHub}
+                      onChange={(e) => setExportToGitHub(e.target.checked)}
+                      className="rounded text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="flex items-center gap-1.5 text-neutral-700 dark:text-neutral-300">
+                      <GitBranch className="w-3.5 h-3.5 text-neutral-400" />
+                      Exportar como Issue no GitHub
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t border-neutral-200 dark:border-neutral-800">
+          <div className="flex items-center justify-between pt-3 border-t border-neutral-200 dark:border-neutral-800">
             {isEditing && onDelete && appointment?.id ? (
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm('Deseja realmente remover este compromisso?')) {
+                  if (confirm('Deseja realmente excluir este agendamento?')) {
                     onDelete(appointment.id!);
                     onClose();
                   }
@@ -374,7 +494,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
                 className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors shadow-sm"
               >
                 <Check className="w-4 h-4" />
-                {isEditing ? 'Salvar Alterações' : 'Criar Compromisso'}
+                {isEditing ? 'Salvar' : 'Agendar'}
               </button>
             </div>
           </div>

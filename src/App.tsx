@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { MonthCalendarView } from './components/MonthCalendarView';
-import { WeekCalendarView } from './components/WeekCalendarView';
 import { AgendaListView } from './components/AgendaListView';
 import { AppointmentModal } from './components/AppointmentModal';
 import { MediaViewerModal } from './components/MediaViewerModal';
@@ -12,7 +11,7 @@ import { Appointment, CalendarViewMode, IntegrationsConfig, MediaAttachment } fr
 import { syncAppointmentsToSupabase } from './services/supabaseService';
 import { exportAppointmentToGitHubIssue } from './services/githubService';
 
-const APPOINTMENTS_STORAGE_KEY = 'cronosmedia_appointments_v1';
+const APPOINTMENTS_STORAGE_KEY = 'cronosmedia_appointments_v2';
 const INTEGRATIONS_STORAGE_KEY = 'cronosmedia_integrations_v1';
 const THEME_STORAGE_KEY = 'cronosmedia_theme_v1';
 
@@ -21,7 +20,7 @@ export default function App() {
   const [isDark, setIsDark] = useState<boolean>(() => {
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     if (saved) return saved === 'dark';
-    return true; // Default to dark for high-tech media aesthetic
+    return true;
   });
 
   useEffect(() => {
@@ -51,7 +50,6 @@ export default function App() {
     return INITIAL_APPOINTMENTS;
   });
 
-  // Save appointments to localStorage on change
   useEffect(() => {
     try {
       localStorage.setItem(APPOINTMENTS_STORAGE_KEY, JSON.stringify(appointments));
@@ -94,8 +92,8 @@ export default function App() {
     } catch (e) {}
   }, [integrationsConfig]);
 
-  // View state
-  const [currentView, setCurrentView] = useState<CalendarViewMode>('month');
+  // Simplified 2-mode view state
+  const [currentView, setCurrentView] = useState<CalendarViewMode>('calendar');
 
   // Modals state
   const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
@@ -106,7 +104,6 @@ export default function App() {
   const [activeMediaViewer, setActiveMediaViewer] = useState<{
     list: MediaAttachment[];
     index: number;
-    appointmentId?: string;
   } | null>(null);
 
   // Quick Toast Notification
@@ -120,9 +117,10 @@ export default function App() {
   const handleOpenNewAppointment = (date?: string) => {
     setEditingAppointment({
       date: date || new Date().toISOString().split('T')[0],
-      startTime: '10:00',
-      endTime: '11:00',
-      category: 'producao',
+      startTime: '13:30',
+      category: '1_aula',
+      schoolClass: '62.01',
+      shift: 'vespertino',
       status: 'agendado',
       media: [],
     });
@@ -143,7 +141,6 @@ export default function App() {
   ) => {
     let updatedApt = { ...savedApt };
 
-    // Export to GitHub if requested
     if (exportToGitHub && integrationsConfig.github.repo) {
       showToast('Exportando para GitHub Issues...');
       const ghRes = await exportAppointmentToGitHubIssue(updatedApt, integrationsConfig.github);
@@ -158,7 +155,6 @@ export default function App() {
       }
     }
 
-    // Update in state
     setAppointments((prev) => {
       const index = prev.findIndex((a) => a.id === updatedApt.id);
       if (index >= 0) {
@@ -169,13 +165,16 @@ export default function App() {
       return [updatedApt, ...prev];
     });
 
-    showToast(`Compromisso "${updatedApt.title}" salvo com sucesso!`);
+    showToast(`Agendamento "${updatedApt.title}" salvo!`);
 
-    // Sync to Supabase if requested or autoSync is active
-    if ((syncToSupabase || integrationsConfig.supabase.autoSync) && integrationsConfig.supabase.url && integrationsConfig.supabase.anonKey) {
+    if (
+      (syncToSupabase || integrationsConfig.supabase.autoSync) &&
+      integrationsConfig.supabase.url &&
+      integrationsConfig.supabase.anonKey
+    ) {
       syncAppointmentsToSupabase([updatedApt], integrationsConfig.supabase).then((res) => {
         if (res.success) {
-          showToast('Registro sincronizado com o Supabase!');
+          showToast('Sincronizado com o Supabase!');
         }
       });
     }
@@ -184,15 +183,14 @@ export default function App() {
   // Delete Appointment
   const handleDeleteAppointment = (id: string) => {
     setAppointments((prev) => prev.filter((a) => a.id !== id));
-    showToast('Compromisso removido.');
+    showToast('Agendamento removido.');
   };
 
   // Preview Media
-  const handlePreviewMedia = (mediaList: MediaAttachment[], index: number, appointmentId?: string) => {
+  const handlePreviewMedia = (mediaList: MediaAttachment[], index: number) => {
     setActiveMediaViewer({
       list: mediaList,
       index,
-      appointmentId,
     });
   };
 
@@ -204,7 +202,7 @@ export default function App() {
         media: apt.media.map((m) => (m.id === mediaId ? { ...m, caption } : m)),
       }))
     );
-    showToast('Legenda do arquivo atualizada.');
+    showToast('Legenda atualizada.');
   };
 
   // Delete Media
@@ -215,7 +213,7 @@ export default function App() {
         media: apt.media.filter((m) => m.id !== mediaId),
       }))
     );
-    showToast('Arquivo de mídia removido.');
+    showToast('Mídia removida.');
   };
 
   // Quick Export to GitHub
@@ -238,7 +236,7 @@ export default function App() {
         },
       };
       setAppointments((prev) => prev.map((a) => (a.id === apt.id ? updated : a)));
-      showToast(`Sucesso! Criada Issue #${res.issueNumber} no GitHub.`);
+      showToast(`Criada Issue #${res.issueNumber} no GitHub!`);
     } else {
       showToast(`Erro ao exportar: ${res.error}`);
     }
@@ -246,7 +244,7 @@ export default function App() {
 
   // Reset seed data
   const handleResetSeedData = () => {
-    if (confirm('Restaurar dados de demonstração originais com fotos e vídeos?')) {
+    if (confirm('Restaurar dados de demonstração?')) {
       setAppointments(INITIAL_APPOINTMENTS);
       localStorage.setItem(APPOINTMENTS_STORAGE_KEY, JSON.stringify(INITIAL_APPOINTMENTS));
       showToast('Dados de demonstração restaurados.');
@@ -255,7 +253,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 transition-colors">
-      {/* Top Header */}
       <Header
         currentView={currentView}
         onViewChange={setCurrentView}
@@ -266,45 +263,29 @@ export default function App() {
         integrationsConfig={integrationsConfig}
       />
 
-      {/* Main Workspace */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
         <div className="flex flex-col lg:flex-row gap-6 items-start">
-          {/* Left Sidebar */}
           <Sidebar
-            currentView={currentView}
-            onViewChange={setCurrentView}
             onOpenIntegrations={() => setIsIntegrationsModalOpen(true)}
             appointments={appointments}
             integrationsConfig={integrationsConfig}
             onResetSeedData={handleResetSeedData}
           />
 
-          {/* Center Main View Area */}
           <div className="flex-1 w-full min-w-0">
-            {currentView === 'month' && (
+            {currentView === 'calendar' ? (
               <MonthCalendarView
                 appointments={appointments}
                 onSelectAppointment={handleOpenEditAppointment}
                 onNewAppointment={handleOpenNewAppointment}
-                onPreviewMedia={(mediaList, index) => handlePreviewMedia(mediaList, index)}
+                onPreviewMedia={handlePreviewMedia}
               />
-            )}
-
-            {currentView === 'week' && (
-              <WeekCalendarView
-                appointments={appointments}
-                onSelectAppointment={handleOpenEditAppointment}
-                onNewAppointment={handleOpenNewAppointment}
-                onPreviewMedia={(mediaList, index) => handlePreviewMedia(mediaList, index)}
-              />
-            )}
-
-            {currentView === 'agenda' && (
+            ) : (
               <AgendaListView
                 appointments={appointments}
                 onSelectAppointment={handleOpenEditAppointment}
                 onNewAppointment={() => handleOpenNewAppointment()}
-                onPreviewMedia={(mediaList, index) => handlePreviewMedia(mediaList, index)}
+                onPreviewMedia={handlePreviewMedia}
                 onDeleteAppointment={handleDeleteAppointment}
                 onExportToGitHub={handleQuickExportToGitHub}
               />
@@ -313,14 +294,13 @@ export default function App() {
         </div>
       </main>
 
-      {/* Modals */}
       <AppointmentModal
         isOpen={isAppointmentModalOpen}
         appointment={editingAppointment}
         onClose={() => setIsAppointmentModalOpen(false)}
         onSave={handleSaveAppointment}
         onDelete={handleDeleteAppointment}
-        onPreviewMedia={(list, idx) => handlePreviewMedia(list, idx)}
+        onPreviewMedia={handlePreviewMedia}
       />
 
       {activeMediaViewer && (
@@ -341,11 +321,10 @@ export default function App() {
         appointments={appointments}
         onImportAppointmentsFromSupabase={(imported) => {
           setAppointments(imported);
-          showToast(`${imported.length} compromissos importados do Supabase!`);
+          showToast(`${imported.length} agendamentos importados do Supabase!`);
         }}
       />
 
-      {/* Floating Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-5 right-5 z-50 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 px-4 py-2.5 rounded-xl shadow-xl text-xs font-medium border border-neutral-800 dark:border-neutral-200 animate-in fade-in slide-in-from-bottom-2">
           {toastMessage}

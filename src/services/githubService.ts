@@ -1,4 +1,5 @@
 import { Appointment, GitHubConfig } from '../types';
+import { getCategoryLabel, getShiftLabel } from '../constants/school';
 
 export async function testGitHubConnection(
   token: string,
@@ -122,15 +123,14 @@ function generateIssueMarkdown(apt: Appointment): string {
           .join('\n')
       : '_Nenhum arquivo multimídia anexado a este compromisso._';
 
-  return `### 📅 Detalhes do Compromisso Agendado
+  return `### 📅 Detalhes do Agendamento
 
 - **Título**: ${apt.title}
-- **Data**: ${apt.date}
-- **Horário**: ${apt.startTime} às ${apt.endTime}
-- **Categoria**: ${apt.category.toUpperCase()}
+- **Aula / Categoria**: ${getCategoryLabel(apt.category)}
+${apt.subject ? `- **Matéria**: ${apt.subject}\n` : ''}${apt.teacherName ? `- **Professor(a)**: ${apt.teacherName}\n` : ''}${apt.schoolClass ? `- **Turma**: ${apt.schoolClass}${apt.shift ? ` (${getShiftLabel(apt.shift)})` : ''}\n` : ''}- **Data**: ${apt.date}
+- **Horário**: ${apt.startTime}${apt.endTime ? ` às ${apt.endTime}` : ''}
 - **Status**: ${apt.status}
 - **Localização**: ${apt.location || 'Não especificada'}
-- **Cliente / Contato**: ${apt.clientName || 'N/A'} ${apt.clientEmail ? `(${apt.clientEmail})` : ''}
 
 ---
 

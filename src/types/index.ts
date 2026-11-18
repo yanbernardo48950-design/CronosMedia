@@ -13,7 +13,15 @@ export interface MediaAttachment {
   uploadedAt: string;
 }
 
+export type LessonCategory =
+  | '1_aula'
+  | '2_aula'
+  | '3_aula'
+  | '4_aula'
+  | '5_aula';
+
 export type AppointmentCategory =
+  | LessonCategory
   | 'reuniao'
   | 'producao'
   | 'vistoria'
@@ -21,6 +29,8 @@ export type AppointmentCategory =
   | 'ensaio'
   | 'cliente'
   | 'outro';
+
+export type SchoolShift = 'vespertino' | 'matutino';
 
 export type AppointmentStatus =
   | 'agendado'
@@ -34,8 +44,12 @@ export interface Appointment {
   description: string;
   date: string; // YYYY-MM-DD
   startTime: string; // HH:mm
-  endTime: string; // HH:mm
+  endTime?: string; // HH:mm
   category: AppointmentCategory;
+  subject?: string; // Matéria
+  teacherName?: string; // Nome do professor
+  schoolClass?: string; // Turma (ex: 62.01, 13.01)
+  shift?: SchoolShift; // vespertino | matutino
   status: AppointmentStatus;
   location: string;
   clientName?: string;
@@ -87,4 +101,4 @@ export interface IntegrationsConfig {
   vercel: VercelConfig;
 }
 
-export type CalendarViewMode = 'month' | 'week' | 'agenda' | 'integrations';
+export type CalendarViewMode = 'calendar' | 'list';

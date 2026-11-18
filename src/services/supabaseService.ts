@@ -89,8 +89,12 @@ export async function syncAppointmentsToSupabase(
       description: apt.description,
       date: apt.date,
       start_time: apt.startTime,
-      end_time: apt.endTime,
+      end_time: apt.endTime || '',
       category: apt.category,
+      subject: apt.subject || null,
+      teacher_name: apt.teacherName || null,
+      school_class: apt.schoolClass || null,
+      shift: apt.shift || null,
       status: apt.status,
       location: apt.location,
       client_name: apt.clientName,
@@ -150,7 +154,11 @@ export async function fetchAppointmentsFromSupabase(
       date: row.date,
       startTime: row.start_time,
       endTime: row.end_time,
-      category: row.category || 'outro',
+      category: row.category || '1_aula',
+      subject: row.subject || undefined,
+      teacherName: row.teacher_name || undefined,
+      schoolClass: row.school_class || undefined,
+      shift: row.shift || undefined,
       status: row.status || 'agendado',
       location: row.location || '',
       clientName: row.client_name,
@@ -174,7 +182,7 @@ export function getSupabaseSqlSchema(): string {
 -- Execute este script no SQL Editor do seu projeto Supabase
 -- ====================================================
 
--- 1. Criação da tabela principal de compromissos
+-- 1. Criação da tabela principal de compromissos e aulas
 CREATE TABLE IF NOT EXISTS public.appointments (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -182,7 +190,11 @@ CREATE TABLE IF NOT EXISTS public.appointments (
     date DATE NOT NULL,
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
-    category TEXT DEFAULT 'outro',
+    category TEXT DEFAULT '1_aula',
+    subject TEXT,
+    teacher_name TEXT,
+    school_class TEXT,
+    shift TEXT,
     status TEXT DEFAULT 'agendado',
     location TEXT,
     client_name TEXT,
